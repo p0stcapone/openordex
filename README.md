@@ -32,23 +32,24 @@ $ docker run -it -d -p 8080:80 openordex
 All Initial Asks are Submited as PSBTs with:
 
                 |    Inputs     |    Outputs    |
-                |---------------|---------------|
+----------------|---------------|---------------|---------------
                 |               |               |
    From maker > | Inscription   | Ask           | > To Maker
                 |               |               |
+----------------|---------------|---------------|---------------
 
 Signed and submitted to the order book by the maker
 
 The taker finalizes the PSBT based on available UTXOs and fee market conditions:
 
                 |    Inputs     |    Outputs    |
-                |---------------|---------------|
+----------------|---------------|---------------|---------------
                 |               |               |
    From Taker > | Payment*      | Change*       | > To Taker
    From Maker > | Inscription   | Ask           | > To Maker
    From Taker > | Additional**  | Inscription   | > To Taker
                 |               | Change**      | > To Taker
-                |               |               |
+----------------|---------------|---------------|---------------
 
 *There may be multiple UTXOs used for Payment.  There must be an equal number of Change outputs (to enforce index match requirements of sighashsingle)
 **There may be multiple Additional, they will be used to pay for fees or add additional padding to Output: Inscription in cases where the output would drop below 2k sats (due to fees)
