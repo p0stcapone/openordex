@@ -49,4 +49,4 @@ From Taker >     | Additional**  | Inscription   | > To Taker    |
 *There may be multiple UTXOs used for Payment.  There must be an equal number of Change outputs (to enforce index match requirements of sighashsingle)
 **There may be multiple Additional, they will be used to pay for fees or add additional padding to Output: Inscription in cases where the output would drop below 2k sats (due to fees)
 
-The inscribed sat will *always* remain at the same sat index.  
+The inscribed sat will remain at a sat index below the dust limit (546), and the inscription output will never be less than 2k sats. 
