@@ -50,14 +50,18 @@ async function selectUtxos(utxos, amount, vins, vouts, recommendedFeeRate, inscr
     // Sort descending by value greater than amount
     utxos = utxos.filter(x => x.value).sort((a, b) => b.value - a.value)
 
+    // If inscription offset is less than dust limit, add additional output -to correct in generatePsbtBuyingInscription()
+    if (!isInscriptionOffsetLessThanDust(inscription)) {
+        additionalVouts++
+    }
+
     for (const utxo of utxos) {
 
         // Never spend a utxo that contains an inscription for cardinal purposes
-        console.log(utxos)
         if (await doesUtxoContainInscription(utxo)) {
             continue
         }
-        
+
         estimatedFee = calculateFee(vins + takerUtxos.length + paddingUtxos.length, vouts + additionalVouts, recommendedFeeRate)
 
         if (inscriptionOutputValue - estimatedFee + paddingUtxosAmount < 2000) {
@@ -76,7 +80,7 @@ async function selectUtxos(utxos, amount, vins, vouts, recommendedFeeRate, inscr
         if (amount < takerUtxosAmount && inscriptionOutputValue + paddingUtxosAmount - estimatedFee > 2546) {
             break
         }
-        
+
     }
 
     if (inscriptionOutputValue + paddingUtxosAmount - estimatedFee < 2546) {
@@ -212,6 +216,10 @@ async function doesUtxoContainInscription(utxo) {
         .then(response => response.text())
 
     return html.match(/class=thumbnails/) !== null
+}
+
+async function isInscriptionOffsetLessThanDust(inscription) {
+    return inscriptionOffset < 546
 }
 
 function calculateFee(vins, vouts, recommendedFeeRate, includeChangeOutput = true) {
@@ -382,7 +390,7 @@ async function signPSBTUsingWalletAndBroadcast(inputId) {
         await unisat.requestAccounts()
         const signedPsbt = await unisat.signPsbt(base64ToHex(input.value))
         const txHex = bitcoin.Psbt.fromHex(signedPsbt).extractTransaction().toHex()
-        
+
         const res = await fetch(`${baseMempoolApiUrl}/tx`, { method: 'post', body: txHex })
         if (res.status != 200) {
             return alert(`Mempool API returned ${res.status} ${res.statusText}\n\n${await res.text()}`)
@@ -698,7 +706,7 @@ async function inscriptionPage() {
         document.getElementById('btnBuyInscription').disabled = false
     }
 
-    
+
 
     generatePSBTBuyingInscription = async (payerAddress, receiverAddress, price, takerUtxos, paddingUtxos) => {
         const psbt = new bitcoin.Psbt({ network });
@@ -719,7 +727,7 @@ async function inscriptionPage() {
             ...sellerSignedPsbt.data.globalMap.unsignedTx.tx.ins[0],
             ...sellerSignedPsbt.data.inputs[0]
         })
-        
+
 
         // add padding inputs
         for (utxo of paddingUtxos) {
@@ -734,7 +742,6 @@ async function inscriptionPage() {
         let sumOfTakerUtxos = 0
         takerUtxos.forEach(u => sumOfTakerUtxos += u.value)
         let remainingTakerUtxoChange = sumOfTakerUtxos - price
-        
 
         for (let i = 0; i < takerUtxos.length; i++) {
             if (i < takerUtxos.length - 1) {
@@ -756,25 +763,31 @@ async function inscriptionPage() {
             ...sellerSignedPsbt.data.globalMap.unsignedTx.tx.outs[0]
         })
 
-        
+        // if inscription offset is greater than dust limit, split the lesser index sats off into separate output -reset index offset to 0
+        if (!isInscriptionOffsetLessThanDust(inscription)) {
+            psbt.addOutput({
+                address: receiverAddress,
+                value: inscription.offset
+            })
+        }
 
         const fee = calculateFee(psbt.txInputs.length, psbt.txOutputs.length, await recommendedFeeRate)
         let remainingPaddingValue = 0
         paddingUtxos.forEach(u => remainingPaddingValue += u.value)
 
-        // If no added padding available, and safe to send with current fee, then send
+        // If no added padding available, and safe to send with current fee, then add inscription and continue
         if (!paddingUtxos.length && inscriptionUtxoValue - fee > 2000) {
             psbt.addOutput({
                 address: receiverAddress,
                 value: inscriptionUtxoValue - fee
             })
-        // If safe to proceed with available padding, then send
+        // If safe to proceed with available padding, then add inscription with available padding and continue
         } else if (inscriptionUtxoValue + remainingPaddingValue - fee < 10000 && inscriptionUtxoValue + remainingPaddingValue - fee > 2000) {
             psbt.addOutput({
                 address: receiverAddress,
                 value: inscriptionUtxoValue + remainingPaddingValue - fee
             })
-        // If padding available to reset the 10k threshold, reset and spend change to receiver
+        // If padding available to reset the 10k threshold, rest the inscription output to 10k sats and spend change to receiver
         } else if (inscriptionUtxoValue + remainingPaddingValue - fee > 10000) {
             psbt.addOutput({
                 address: receiverAddress,
@@ -790,7 +803,7 @@ async function inscriptionPage() {
         } else {
             throw new Error(`Fee markets are currently very volatile.  Please add additional funds or wait.`)
         }
-        
+
         return psbt.toBase64();
     }
 
